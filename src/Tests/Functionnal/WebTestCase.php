@@ -42,6 +42,16 @@ class WebTestCase extends BaseWebTestCase
      */
     protected $route;
 
+    /**
+     * @var string
+     */
+    protected $username = null;
+
+    /**
+     * @var string
+     */
+    protected $password = null;
+
     protected function setUp()
     {
         $this->faker = FakerFactory::create();
@@ -53,7 +63,8 @@ class WebTestCase extends BaseWebTestCase
      */
     protected function checkGetAll(string $route, int $expectedItems)
     {
-        $client = $this->getClient('GET', $route);
+        $client = $this->getClient();
+        $client->request('GET', $route);
         $this->checkStatusCodeAndContentType($client, 200);
 
         $items = json_decode($client->getResponse()->getContent());
@@ -68,7 +79,8 @@ class WebTestCase extends BaseWebTestCase
      */
     protected function checkGetAnElement(string $route)
     {
-        $client = $this->getClient('GET', $route);
+        $client = $this->getClient();
+        $client->request('GET', $route);
         $this->checkStatusCodeAndContentType($client, 200);
         $item = json_decode($client->getResponse()->getContent());
 
@@ -82,7 +94,8 @@ class WebTestCase extends BaseWebTestCase
      */
     protected function checkGetAUnexistingElement(string $route)
     {
-        $client = $this->getClient('GET', $route);
+        $client = $this->getClient();
+        $client->request('GET', $route);
         $this->checkStatusCodeAndContentType($client, '404');
         $adresse = json_decode($client->getResponse()->getContent());
 
@@ -96,7 +109,7 @@ class WebTestCase extends BaseWebTestCase
      */
     protected function checkUpdateOrPatchAUnexistingElement(string $route, string $method)
     {
-        $client = static::createClient();
+        $client = $this->getClient();
         $client->request(
                 $method, $route, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($this->itemValues)
         );
@@ -121,7 +134,7 @@ class WebTestCase extends BaseWebTestCase
             $statusCode = 400;
         }
 
-        $client = $client = static::createClient();
+        $client = $this->getClient();
         $client->request(
                 $method, $route, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($values)
         );
@@ -162,9 +175,9 @@ class WebTestCase extends BaseWebTestCase
      */
     protected function checkDeleteAnElement(string $route)
     {
-        $client = static::createClient();
-
+        $client = $this->getClient();
         $client->request('DELETE', $route);
+
         $this->assertSame(204, $client->getResponse()->getStatusCode());
     }
 
@@ -174,11 +187,14 @@ class WebTestCase extends BaseWebTestCase
      *
      * @return Client
      */
-    protected function getClient(string $method, string $route)
+    protected function getClient($withAuthentification = true)
     {
         $client = static::createClient();
 
-        $client->request($method, $route);
+        if ($withAuthentification) {
+            $token = $this->username && $this->password ? $this->authorize($this->username, $this->password) : $this->authorize();
+            $client->setServerParameter('HTTP_Authorization', sprintf('Bearer %s', $token));
+        }
 
         return $client;
     }
@@ -247,5 +263,36 @@ class WebTestCase extends BaseWebTestCase
             $this->checkIfItemHasFields((array) $adresse);
             $this->checkIfItemHasLinks((array) $adresse);
         }
+    }
+
+    /**
+     * @param string $username
+     * @param string $password
+     *
+     * @return string|bool
+     */
+    protected function authorize($username = 'admin', $password = 'admin')
+    {
+        $client = $client = static::createClient();
+        $values = [
+                'username' => $username,
+                'password' => $password,
+            ];
+        $client->request(
+            'POST',
+            'api/login_check',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode($values)
+        );
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+
+        if (isset($data['token'])) {
+            return $data['token'];
+        }
+
+        return false;
     }
 }
